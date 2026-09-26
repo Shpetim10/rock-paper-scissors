@@ -3,19 +3,16 @@
 from __future__ import annotations
 
 import base64
-import hashlib
-import os
-from dataclasses import dataclass
 from pathlib import Path
 
 import streamlit as st
 from PIL import Image
 
 from game.classifier import CLASS_NAMES
+from game.dataset import DatasetImage, load_dataset as _load_dataset
 
 DATASET_ROOT = Path("datasets")
 CLASS_COLORS = {"rock": "#7aa2ff", "paper": "#facc15", "scissors": "#ff6ec4"}
-VAL_HOLDOUT = 0.2  # deterministic 80/20 split, no train/val folders exist on disk
 
 st.set_page_config(
     page_title="Dataset Gallery",
@@ -24,49 +21,9 @@ st.set_page_config(
 )
 
 
-@dataclass
-class DatasetImage:
-    path: Path
-    label: str
-    filename: str
-    split: str
-    width: int
-    height: int
-
-
-def assign_split(filename: str) -> str:
-    digest = hashlib.md5(filename.encode()).hexdigest()
-    bucket = int(digest, 16) % 100
-    return "Validation" if bucket < int(VAL_HOLDOUT * 100) else "Training"
-
-
 @st.cache_data(show_spinner=False)
-def load_dataset(_root: str) -> list[DatasetImage]:
-    images: list[DatasetImage] = []
-    for label in CLASS_NAMES:
-        class_dir = Path(_root) / label
-        if not class_dir.is_dir():
-            continue
-        for entry in sorted(os.listdir(class_dir)):
-            path = class_dir / entry
-            if not path.is_file():
-                continue
-            try:
-                with Image.open(path) as im:
-                    width, height = im.size
-            except Exception:
-                continue
-            images.append(
-                DatasetImage(
-                    path=path,
-                    label=label,
-                    filename=entry,
-                    split=assign_split(entry),
-                    width=width,
-                    height=height,
-                )
-            )
-    return images
+def load_dataset(root: str) -> list[DatasetImage]:
+    return _load_dataset(root, CLASS_NAMES)
 
 
 @st.cache_data(show_spinner=False)
@@ -172,8 +129,8 @@ def inject_css() -> None:
         .badge-rock { background: rgba(122, 162, 255, 0.18); color: #7aa2ff; border: 1px solid #7aa2ff; }
         .badge-paper { background: rgba(250, 204, 21, 0.18); color: #facc15; border: 1px solid #facc15; }
         .badge-scissors { background: rgba(255, 110, 196, 0.18); color: #ff6ec4; border: 1px solid #ff6ec4; }
-        .badge-split-training { background: rgba(74, 222, 128, 0.15); color: #4ade80; border: 1px solid #4ade80; }
-        .badge-split-validation { background: rgba(122, 162, 255, 0.15); color: #7aa2ff; border: 1px solid #7aa2ff; }
+        .badge-source-original { background: rgba(241, 241, 246, 0.12); color: var(--text-primary); border: 1px solid var(--text-muted); }
+        .badge-source-augmented { background: rgba(250, 204, 21, 0.15); color: #facc15; border: 1px solid #facc15; }
 
         .chart-row { display: flex; align-items: center; gap: 0.6rem; margin-top: 0.5rem; font-size: 0.85rem; }
         .chart-label { width: 90px; text-transform: capitalize; color: var(--text-muted); }
@@ -208,16 +165,16 @@ def render_header() -> None:
 def render_kpis(images: list[DatasetImage]) -> None:
     total = len(images)
     counts = {label: sum(1 for img in images if img.label == label) for label in CLASS_NAMES}
-    val_count = sum(1 for img in images if img.split == "Validation")
-    train_count = total - val_count
-    split_ratio = f"{train_count}/{val_count}" if total else "0/0"
+    augmented_count = sum(1 for img in images if img.source == "Augmented")
+    original_count = total - augmented_count
+    source_ratio = f"{original_count}/{augmented_count}" if total else "0/0"
 
     cards = [
         ("Total Images", total, "#f1f1f6"),
         ("Rock Images", counts.get("rock", 0), CLASS_COLORS["rock"]),
         ("Paper Images", counts.get("paper", 0), CLASS_COLORS["paper"]),
         ("Scissors Images", counts.get("scissors", 0), CLASS_COLORS["scissors"]),
-        ("Train / Val Split", split_ratio, "#4ade80"),
+        ("Original / Augmented", source_ratio, "#4ade80"),
     ]
     columns = st.columns(len(cards))
     for column, (label, value, color) in zip(columns, cards):
@@ -237,15 +194,15 @@ def badge_html(label: str) -> str:
     return f'<span class="badge badge-{label}">{label.capitalize()}</span>'
 
 
-def split_badge_html(split: str) -> str:
-    return f'<span class="badge badge-split-{split.lower()}">{split}</span>'
+def source_badge_html(source: str) -> str:
+    return f'<span class="badge badge-source-{source.lower()}">{source}</span>'
 
 
 @st.dialog("Image Details")
 def show_detail_dialog(img: DatasetImage) -> None:
     st.image(str(img.path), use_container_width=True)
     st.markdown(
-        f"{badge_html(img.label)} &nbsp; {split_badge_html(img.split)}",
+        f"{badge_html(img.label)} &nbsp; {source_badge_html(img.source)}",
         unsafe_allow_html=True,
     )
     st.write("")
@@ -256,7 +213,7 @@ def show_detail_dialog(img: DatasetImage) -> None:
         | Filename | `{img.filename}` |
         | Label | {img.label.capitalize()} |
         | Resolution | {img.width} × {img.height} px |
-        | Dataset split | {img.split} |
+        | Source | {img.source} |
         | Dataset location | `{img.path.as_posix()}` |
         """
     )
@@ -282,7 +239,7 @@ def render_gallery(images: list[DatasetImage]) -> None:
                     st.markdown(
                         f"""
                         <div class="gallery-card-body">
-                            {badge_html(img.label)} {split_badge_html(img.split)}
+                            {badge_html(img.label)} {source_badge_html(img.source)}
                             <div class="gallery-filename" title="{img.filename}">{img.filename}</div>
                         </div>
                         """,
@@ -316,23 +273,23 @@ def render_distribution_chart(images: list[DatasetImage]) -> None:
 
 
 def render_balance_chart(images: list[DatasetImage]) -> None:
-    st.markdown("**Dataset Balance — Training vs. Validation**")
+    st.markdown("**Dataset Balance — Original vs. Augmented**")
     for label in CLASS_NAMES:
         class_images = [img for img in images if img.label == label]
         total = len(class_images)
-        train = sum(1 for img in class_images if img.split == "Training")
-        val = total - train
-        train_pct = (train / total * 100) if total else 0
-        val_pct = 100 - train_pct if total else 0
+        original = sum(1 for img in class_images if img.source == "Original")
+        augmented = total - original
+        original_pct = (original / total * 100) if total else 0
+        augmented_pct = 100 - original_pct if total else 0
         st.markdown(
             f"""
             <div class="chart-row">
                 <div class="chart-label">{label.capitalize()}</div>
                 <div class="chart-track">
-                    <div class="chart-fill" style="width:{train_pct}%; background:#4ade80;"></div>
-                    <div class="chart-fill" style="width:{val_pct}%; background:#7aa2ff;"></div>
+                    <div class="chart-fill" style="width:{original_pct}%; background:#4ade80;"></div>
+                    <div class="chart-fill" style="width:{augmented_pct}%; background:#facc15;"></div>
                 </div>
-                <div class="chart-count">{train} / {val}</div>
+                <div class="chart-count">{original} / {augmented}</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -340,8 +297,8 @@ def render_balance_chart(images: list[DatasetImage]) -> None:
     st.markdown(
         """
         <div class="legend">
-            <div class="legend-item"><span class="legend-dot" style="background:#4ade80;"></span> Training</div>
-            <div class="legend-item"><span class="legend-dot" style="background:#7aa2ff;"></span> Validation</div>
+            <div class="legend-item"><span class="legend-dot" style="background:#4ade80;"></span> Original</div>
+            <div class="legend-item"><span class="legend-dot" style="background:#facc15;"></span> Augmented</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -399,6 +356,7 @@ def main() -> None:
 
     render_header()
     render_kpis(all_images)
+    st.caption("All images shown are currently used for training — no validation or test split exists yet.")
     st.write("")
 
     st.subheader("Image Gallery")
@@ -415,8 +373,15 @@ def main() -> None:
         needle = search.strip().lower()
         filtered = [img for img in filtered if needle in img.filename.lower()]
 
-    st.caption(f"Showing {len(filtered)} of {len(all_images)} images")
-    render_gallery(filtered)
+    original_tab, augmented_tab = st.tabs(["\U0001F4F7 Original", "\U0001FA84 Augmented"])
+    with original_tab:
+        originals = [img for img in filtered if img.source == "Original"]
+        st.caption(f"Showing {len(originals)} of {len(filtered)} filtered images")
+        render_gallery(originals)
+    with augmented_tab:
+        augmented = [img for img in filtered if img.source == "Augmented"]
+        st.caption(f"Showing {len(augmented)} of {len(filtered)} filtered images")
+        render_gallery(augmented)
 
     st.write("")
     render_insights(all_images)

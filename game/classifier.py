@@ -13,9 +13,26 @@ from dataclasses import dataclass
 import numpy as np
 from PIL import Image
 
-MODEL_PATH = os.environ.get("RPS_MODEL_PATH", "model/rps_model.h5")
-IMAGE_SIZE = (150, 150)
-CLASS_NAMES = ["paper", "rock", "scissors"]
+MODEL_PATH = os.environ.get("RPS_MODEL_PATH", "model/rps_model.keras")
+LABELS_PATH = os.environ.get("RPS_LABELS_PATH", "model/labels.txt")
+IMAGE_SIZE = (224, 224)
+
+
+def _load_class_names() -> list[str]:
+    if not os.path.exists(LABELS_PATH):
+        return ["paper", "rock", "scissors"]
+    names = []
+    with open(LABELS_PATH) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            _, name = line.split(maxsplit=1)
+            names.append(name)
+    return names
+
+
+CLASS_NAMES = _load_class_names()
 
 GESTURE_EMOJI = {"rock": "\U0001FAA8", "paper": "\U0001F4C4", "scissors": "✂️"}
 
@@ -64,7 +81,7 @@ class GestureClassifier:
             return probabilities, True
 
         img = image.convert("RGB").resize(IMAGE_SIZE)
-        array = np.asarray(img, dtype="float32") / 255.0
+        array = (np.asarray(img, dtype="float32") / 127.5) - 1.0
         batch = np.expand_dims(array, axis=0)
         probabilities = self._model.predict(batch, verbose=0)[0]
         return {name: float(p) for name, p in zip(CLASS_NAMES, probabilities)}, False

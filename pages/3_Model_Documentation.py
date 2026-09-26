@@ -398,28 +398,27 @@ def render_dataset_section(readme_text: str, query: str) -> None:
                 st.image(str(path), caption=label.capitalize(), use_container_width=True)
 
 
-def render_architecture_section() -> None:
+def render_architecture_section(is_mock: bool) -> None:
     section_anchor("architecture")
     st.markdown("## Model Architecture")
     callout(
         "info",
         "\U0001F3D7️",
-        f"Built with **TensorFlow / Keras**. Input images are resized to "
+        f"Built with **TensorFlow / Keras** on top of a **MobileNetV2** (alpha=0.35) feature "
+        f"extractor, trained with Google's Teachable Machine. Input images are resized to "
         f"**{IMAGE_SIZE[0]}×{IMAGE_SIZE[1]}** pixels across **{len(CLASS_NAMES)} classes**: "
         f"{', '.join(c.capitalize() for c in CLASS_NAMES)}.",
     )
     st.markdown(
         """
         <div class="flow-diagram">
-            <div class="flow-box">Input Image<br>150&times;150&times;3</div>
+            <div class="flow-box">Input Image<br>224&times;224&times;3</div>
             <div class="flow-arrow">&rarr;</div>
-            <div class="flow-box">Conv2D + ReLU<br>+ MaxPooling</div>
+            <div class="flow-box">MobileNetV2<br>(alpha=0.35)<br>feature extractor</div>
             <div class="flow-arrow">&rarr;</div>
-            <div class="flow-box">Conv2D + ReLU<br>+ MaxPooling</div>
+            <div class="flow-box">Global Average<br>Pooling</div>
             <div class="flow-arrow">&rarr;</div>
-            <div class="flow-box">Flatten</div>
-            <div class="flow-arrow">&rarr;</div>
-            <div class="flow-box">Dense + Dropout</div>
+            <div class="flow-box">Dense(100)<br>+ ReLU</div>
             <div class="flow-arrow">&rarr;</div>
             <div class="flow-box">Softmax<br>3 classes</div>
         </div>
@@ -428,9 +427,10 @@ def render_architecture_section() -> None:
     )
     with st.expander("\U0001F4C4 Classifier interface (game/classifier.py)", expanded=False):
         st.code(
-            '''MODEL_PATH = os.environ.get("RPS_MODEL_PATH", "model/rps_model.h5")
-IMAGE_SIZE = (150, 150)
-CLASS_NAMES = ["paper", "rock", "scissors"]
+            '''MODEL_PATH = os.environ.get("RPS_MODEL_PATH", "model/rps_model.keras")
+LABELS_PATH = os.environ.get("RPS_LABELS_PATH", "model/labels.txt")
+IMAGE_SIZE = (224, 224)
+CLASS_NAMES = ["rock", "paper", "scissors"]  # loaded from labels.txt
 
 class GestureClassifier:
     def predict(self, image: Image.Image) -> Prediction:
@@ -439,21 +439,32 @@ class GestureClassifier:
         return Prediction(label=label, confidence=probabilities[label], is_mock=is_mock)''',
             language="python",
         )
-    callout(
-        "warning",
-        "⚠️",
-        "No trained weights were found at `model/rps_model.h5`. The exact layer configuration "
-        "above is illustrative of a standard CNN classifier until a trained model is committed.",
-    )
+    if is_mock:
+        callout(
+            "warning",
+            "⚠️",
+            f"No trained weights were found at `{MODEL_PATH}`. The architecture above is "
+            "illustrative until a trained model is committed.",
+        )
+    else:
+        callout(
+            "success",
+            "✅",
+            f"Trained weights loaded from `{MODEL_PATH}`. The architecture above reflects the "
+            "actual model in use.",
+        )
 
 
-def render_training_section() -> None:
+def render_training_section(is_mock: bool) -> None:
     section_anchor("training")
     st.markdown("## Training Process")
     st.markdown(
         "Images are loaded from `datasets/` (247 originals) and `augmented_dataset/` "
-        "(494 images including augmentations), resized to 150×150, and normalized to `[0, 1]` "
-        "before being split into training and validation sets."
+        "(494 images including augmentations), resized to 224×224, and normalized to `[-1, 1]` "
+        "before being split into training and validation sets. The model was trained with "
+        "[Google Teachable Machine](https://teachablemachine.withgoogle.com/), which fine-tunes "
+        "a MobileNetV2 classification head on the uploaded dataset and exports a Keras `.h5` "
+        "checkpoint (converted here to the native Keras 3 format for compatibility)."
     )
     with st.expander("⚙️ Augmentation pipeline (Pillow)", expanded=False):
         st.code(
@@ -466,7 +477,10 @@ def render_training_section() -> None:
             language="python",
         )
     st.markdown("### Training Curves")
-    callout("warning", "\U0001F9EA", "No trained model was found. The curves below are **simulated** to illustrate the documentation layout.")
+    if is_mock:
+        callout("warning", "\U0001F9EA", "No trained model was found. The curves below are **simulated** to illustrate the documentation layout.")
+    else:
+        callout("info", "\U00002139\U0000FE0F", "Teachable Machine does not export per-epoch training history, so the curves below are **simulated** to illustrate the documentation layout.")
     history = mock_training_history()
     acc_df = history.set_index("Epoch")[["Training Accuracy", "Validation Accuracy"]]
     loss_df = history.set_index("Epoch")[["Training Loss", "Validation Loss"]]
@@ -479,7 +493,7 @@ def render_training_section() -> None:
         st.line_chart(loss_df)
 
 
-def render_evaluation_section(query: str) -> None:
+def render_evaluation_section(query: str, is_mock: bool) -> None:
     section_anchor("evaluation")
     st.markdown("## Evaluation Results")
     cm = mock_confusion_matrix()
@@ -537,7 +551,10 @@ def render_evaluation_section(query: str) -> None:
         st.latex(r"\text{Recall} = \frac{TP}{TP + FN}")
         st.latex(r"F_1 = 2 \cdot \frac{\text{Precision} \cdot \text{Recall}}{\text{Precision} + \text{Recall}}")
 
-    callout("warning", "\U0001F9EA", "Metrics and confusion matrix above are simulated placeholders until a real evaluation run is recorded.")
+    if is_mock:
+        callout("warning", "\U0001F9EA", "Metrics and confusion matrix above are simulated placeholders until a real evaluation run is recorded.")
+    else:
+        callout("info", "\U00002139\U0000FE0F", "Teachable Machine does not export a held-out evaluation report, so the metrics and confusion matrix above are simulated placeholders until a real evaluation run is recorded.")
 
     header = "| " + " | ".join(metrics_df.columns) + " |"
     separator = "| " + " | ".join("---" for _ in metrics_df.columns) + " |"
@@ -591,11 +608,11 @@ def render_future_section() -> None:
     section_anchor("future")
     st.markdown("## Future Improvements")
     items = [
-        "Train and commit a real model checkpoint to replace the mock classifier.",
         "Track real training history and evaluation metrics instead of simulated ones.",
         "Expand the dataset with more hands, lighting conditions, and backgrounds.",
         "Add model versioning and a changelog for retrained checkpoints.",
         "Export a confusion matrix and metrics report automatically after each training run.",
+        "Retrain without the Teachable Machine export step to get native Keras 3 checkpoints directly.",
     ]
     for item in items:
         st.markdown(f"- {item}")
@@ -638,11 +655,11 @@ def main() -> None:
     st.divider()
     render_dataset_section(readme_text, query)
     st.divider()
-    render_architecture_section()
+    render_architecture_section(classifier.is_mock)
     st.divider()
-    render_training_section()
+    render_training_section(classifier.is_mock)
     st.divider()
-    render_evaluation_section(query)
+    render_evaluation_section(query, classifier.is_mock)
     st.divider()
     render_usage_section()
     st.divider()

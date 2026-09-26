@@ -320,7 +320,7 @@ def render_capture_and_round(classifier: GestureClassifier) -> None:
         if result["is_mock"]:
             st.markdown(
                 '<div class="mock-banner">No trained model found at '
-                '<code>model/rps_model.h5</code> &mdash; showing a mock prediction.</div>',
+                '<code>model/rps_model.keras</code> &mdash; showing a mock prediction.</div>',
                 unsafe_allow_html=True,
             )
         confidence_pct = round(result["confidence"] * 100, 1)
