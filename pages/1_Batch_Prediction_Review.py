@@ -191,6 +191,20 @@ def ingest_uploads(uploaded_files, classifier: GestureClassifier) -> None:
         )
 
 
+def render_capture_tab(classifier: GestureClassifier) -> None:
+    if "batch_camera_key" not in st.session_state:
+        st.session_state.batch_camera_key = 0
+
+    photo = st.camera_input(
+        "Take a photo of your hand gesture",
+        key=f"batch_camera_{st.session_state.batch_camera_key}",
+    )
+    if photo is not None:
+        ingest_uploads([photo], classifier)
+        st.session_state.batch_camera_key += 1
+        st.rerun()
+
+
 def render_header() -> None:
     st.markdown(
         """
@@ -400,12 +414,16 @@ def main() -> None:
 
     render_header()
 
-    uploaded_files = st.file_uploader(
-        "Drag and drop hand gesture images here, or click to browse",
-        type=["png", "jpg", "jpeg"],
-        accept_multiple_files=True,
-    )
-    ingest_uploads(uploaded_files, classifier)
+    upload_tab, camera_tab = st.tabs(["Upload Files", "Take Photo"])
+    with upload_tab:
+        uploaded_files = st.file_uploader(
+            "Drag and drop hand gesture images here, or click to browse",
+            type=["png", "jpg", "jpeg"],
+            accept_multiple_files=True,
+        )
+        ingest_uploads(uploaded_files, classifier)
+    with camera_tab:
+        render_capture_tab(classifier)
 
     if not st.session_state.batch_items:
         st.info("Upload one or more images to get started.")

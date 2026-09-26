@@ -30,6 +30,10 @@ def init_state() -> None:
         "last_result": None,
         "game_over": False,
         "winner": None,
+        "pending_move": None,
+        "pending_confidence": None,
+        "pending_is_mock": None,
+        "camera_key": 0,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -44,6 +48,10 @@ def reset_game() -> None:
     st.session_state.last_result = None
     st.session_state.game_over = False
     st.session_state.winner = None
+    st.session_state.pending_move = None
+    st.session_state.pending_confidence = None
+    st.session_state.pending_is_mock = None
+    st.session_state.camera_key += 1
 
 
 def inject_css() -> None:
@@ -234,10 +242,9 @@ def render_move_card(column, title: str, gesture: str | None, footer: str = "") 
         )
 
 
-def play_round(image: Image.Image, classifier: GestureClassifier) -> None:
-    prediction = classifier.predict(image)
+def play_round_with_move(human_move: str, confidence: float, is_mock: bool) -> None:
     comp_move = computer_move()
-    outcome = judge(prediction.label, comp_move)
+    outcome = judge(human_move, comp_move)
 
     if outcome == "win":
         st.session_state.human_score += 1
@@ -247,17 +254,17 @@ def play_round(image: Image.Image, classifier: GestureClassifier) -> None:
     st.session_state.history.append(
         {
             "Round": st.session_state.round,
-            "Human": prediction.label.capitalize(),
+            "Human": human_move.capitalize(),
             "Computer": comp_move.capitalize(),
             "Result": {"win": "Win", "lose": "Lose", "draw": "Draw"}[outcome],
         }
     )
     st.session_state.last_result = {
-        "human_move": prediction.label,
+        "human_move": human_move,
         "computer_move": comp_move,
         "outcome": outcome,
-        "confidence": prediction.confidence,
-        "is_mock": prediction.is_mock,
+        "confidence": confidence,
+        "is_mock": is_mock,
     }
     st.session_state.round += 1
 
@@ -267,6 +274,11 @@ def play_round(image: Image.Image, classifier: GestureClassifier) -> None:
     elif st.session_state.computer_score >= WINS_NEEDED:
         st.session_state.game_over = True
         st.session_state.winner = "computer"
+
+
+def play_round(image: Image.Image, classifier: GestureClassifier) -> None:
+    prediction = classifier.predict(image)
+    play_round_with_move(prediction.label, prediction.confidence, prediction.is_mock)
 
 
 def render_victory_screen() -> None:
@@ -296,17 +308,40 @@ def render_capture_and_round(classifier: GestureClassifier) -> None:
     st.subheader("Take Your Shot")
     left, right = st.columns([1, 1])
 
+    awaiting_reveal = st.session_state.pending_move is not None
+
     with left:
         st.markdown('<div class="glass-card">', unsafe_allow_html=True)
-        photo = st.camera_input("Take Picture", label_visibility="visible")
+        if not awaiting_reveal:
+            photo = st.camera_input(
+                "Take Picture",
+                label_visibility="visible",
+                key=f"camera_{st.session_state.camera_key}",
+            )
+            if photo is not None:
+                image = Image.open(photo)
+                with st.spinner("Analyzing your gesture..."):
+                    time.sleep(0.4)
+                    prediction = classifier.predict(image)
+                st.session_state.pending_move = prediction.label
+                st.session_state.pending_confidence = prediction.confidence
+                st.session_state.pending_is_mock = prediction.is_mock
+                st.rerun()
+        else:
+            st.markdown(f"**You played:** {GESTURE_EMOJI.get(st.session_state.pending_move, '')} "
+                        f"{st.session_state.pending_move.capitalize()}")
+            if st.button("Reveal Computer's Move", type="primary", use_container_width=True):
+                play_round_with_move(
+                    st.session_state.pending_move,
+                    st.session_state.pending_confidence,
+                    st.session_state.pending_is_mock,
+                )
+                st.session_state.pending_move = None
+                st.session_state.pending_confidence = None
+                st.session_state.pending_is_mock = None
+                st.session_state.camera_key += 1
+                st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
-
-    if photo is not None:
-        image = Image.open(photo)
-        with st.spinner("Analyzing your gesture..."):
-            time.sleep(0.4)
-            play_round(image, classifier)
-        st.rerun()
 
     result = st.session_state.last_result
     if result is None:
