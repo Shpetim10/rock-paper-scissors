@@ -51,22 +51,28 @@ class GestureClassifier:
     def is_mock(self) -> bool:
         return self._is_mock
 
-    def predict(self, image: Image.Image) -> Prediction:
+    def predict_proba(self, image: Image.Image) -> tuple[dict[str, float], bool]:
+        """Return a {class_name: probability} distribution and the mock flag."""
         if self._model is None:
-            label = random.choice(CLASS_NAMES)
+            top = random.choice(CLASS_NAMES)
             confidence = random.uniform(0.6, 0.99)
-            return Prediction(label=label, confidence=confidence, is_mock=True)
+            leftover = 1.0 - confidence
+            others = [c for c in CLASS_NAMES if c != top]
+            probabilities = {top: confidence}
+            for i, name in enumerate(others):
+                probabilities[name] = leftover / 2 if i == 0 else leftover - probabilities[others[0]]
+            return probabilities, True
 
         img = image.convert("RGB").resize(IMAGE_SIZE)
         array = np.asarray(img, dtype="float32") / 255.0
         batch = np.expand_dims(array, axis=0)
         probabilities = self._model.predict(batch, verbose=0)[0]
-        index = int(np.argmax(probabilities))
-        return Prediction(
-            label=CLASS_NAMES[index],
-            confidence=float(probabilities[index]),
-            is_mock=False,
-        )
+        return {name: float(p) for name, p in zip(CLASS_NAMES, probabilities)}, False
+
+    def predict(self, image: Image.Image) -> Prediction:
+        probabilities, is_mock = self.predict_proba(image)
+        label = max(probabilities, key=probabilities.get)
+        return Prediction(label=label, confidence=probabilities[label], is_mock=is_mock)
 
 
 def computer_move() -> str:
