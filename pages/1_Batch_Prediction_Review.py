@@ -11,12 +11,10 @@ import streamlit as st
 from PIL import Image
 
 from game.classifier import CLASS_NAMES, GestureClassifier
+from game.theme import inject_theme, render_hero
 
-st.set_page_config(
-    page_title="Batch Prediction Review",
-    page_icon="\U0001F5C2️",
-    layout="wide",
-)
+# Page config (title/icon/layout) is set once by the app.py entrypoint via
+# st.navigation; this page only needs to inject its own CSS and content.
 
 
 @st.cache_resource
@@ -50,98 +48,42 @@ def init_state() -> None:
         st.session_state.batch_report = None
 
 
-def inject_css() -> None:
-    st.markdown(
-        """
-        <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
+PAGE_CSS = """
+.prob-row { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.3rem; font-size: 0.78rem; }
+.prob-label { width: 60px; text-transform: capitalize; color: var(--text-muted); }
+.prob-track { flex: 1; height: 8px; border-radius: 6px; background: var(--card-bg-strong); overflow: hidden; }
+.prob-fill { height: 100%; border-radius: 6px; background: linear-gradient(90deg, var(--accent-2), var(--accent-3)); }
+.prob-pct { width: 40px; text-align: right; color: var(--text-primary); }
 
-        html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+.badge-correct { background: rgba(74, 222, 128, 0.16); color: #22a35a; border: 1px solid #4ade80; }
+.badge-incorrect { background: rgba(248, 113, 113, 0.16); color: #d64545; border: 1px solid #f87171; }
 
-        .stApp {
-            background: radial-gradient(circle at 20% -10%, #2b1055 0%, #0f0c29 45%, #0a0a16 100%);
-            color: #f1f1f6;
-        }
+.progress-wrap { margin: 1rem 0; }
+.progress-track { width: 100%; height: 14px; border-radius: 8px; background: var(--card-bg-strong); overflow: hidden; }
+.progress-fill { height: 100%; border-radius: 8px; background: linear-gradient(90deg, var(--accent-3), var(--accent-2)); transition: width 0.4s ease; }
+.progress-text { text-align: center; margin-top: 0.4rem; color: var(--text-muted); font-size: 0.9rem; }
 
-        .hero { text-align: center; padding: 2.5rem 1rem 1.5rem 1rem; animation: fadeIn 0.8s ease; }
-        .hero h1 {
-            font-size: 2.6rem;
-            font-weight: 800;
-            margin: 0;
-            background: linear-gradient(90deg, #ff6ec4, #7873f5, #4ade80);
-            background-size: 200% auto;
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            animation: shimmer 6s linear infinite;
-        }
-        .hero p { font-size: 1.05rem; color: #b9b9d0; margin-top: 0.5rem; }
+.gauge-wrap { display: flex; flex-direction: column; align-items: center; gap: 0.6rem; }
+.gauge {
+    width: 180px; height: 180px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: conic-gradient(var(--accent-3) calc(var(--pct) * 1%), var(--card-bg-strong) 0);
+}
+.gauge-inner {
+    width: 140px; height: 140px; border-radius: 50%;
+    background: var(--surface);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+}
+.gauge-value { font-size: 2rem; font-weight: 800; color: var(--accent-3); }
+.gauge-label { font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
 
-        .glass-card {
-            background: rgba(255, 255, 255, 0.06);
-            border: 1px solid rgba(255, 255, 255, 0.12);
-            border-radius: 18px;
-            padding: 1.2rem;
-            backdrop-filter: blur(14px);
-            -webkit-backdrop-filter: blur(14px);
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-            margin-bottom: 1rem;
-        }
-        .glass-card:hover { transform: translateY(-3px); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45); }
+.stat-value { font-size: 2rem; font-weight: 800; }
+.stat-label { font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
 
-        .badge {
-            display: inline-block;
-            padding: 0.25rem 0.75rem;
-            border-radius: 999px;
-            font-size: 0.8rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.04em;
-        }
-        .badge-rock { background: rgba(122, 162, 255, 0.18); color: #7aa2ff; border: 1px solid #7aa2ff; }
-        .badge-paper { background: rgba(250, 204, 21, 0.18); color: #facc15; border: 1px solid #facc15; }
-        .badge-scissors { background: rgba(255, 110, 196, 0.18); color: #ff6ec4; border: 1px solid #ff6ec4; }
-        .badge-correct { background: rgba(74, 222, 128, 0.18); color: #4ade80; border: 1px solid #4ade80; }
-        .badge-incorrect { background: rgba(248, 113, 113, 0.18); color: #f87171; border: 1px solid #f87171; }
-
-        .prob-row { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.3rem; font-size: 0.78rem; }
-        .prob-label { width: 60px; text-transform: capitalize; color: #b9b9d0; }
-        .prob-track { flex: 1; height: 8px; border-radius: 6px; background: rgba(255,255,255,0.1); overflow: hidden; }
-        .prob-fill { height: 100%; border-radius: 6px; background: linear-gradient(90deg, #7873f5, #4ade80); }
-        .prob-pct { width: 40px; text-align: right; color: #e5e5f0; }
-
-        .progress-wrap { margin: 1rem 0; }
-        .progress-track { width: 100%; height: 14px; border-radius: 8px; background: rgba(255,255,255,0.08); overflow: hidden; }
-        .progress-fill { height: 100%; border-radius: 8px; background: linear-gradient(90deg, #4ade80, #7873f5); transition: width 0.4s ease; }
-        .progress-text { text-align: center; margin-top: 0.4rem; color: #b9b9d0; font-size: 0.9rem; }
-
-        .gauge-wrap { display: flex; flex-direction: column; align-items: center; gap: 0.6rem; }
-        .gauge {
-            width: 180px; height: 180px; border-radius: 50%;
-            display: flex; align-items: center; justify-content: center;
-            background: conic-gradient(#4ade80 calc(var(--pct) * 1%), rgba(255,255,255,0.08) 0);
-        }
-        .gauge-inner {
-            width: 140px; height: 140px; border-radius: 50%;
-            background: #14122b;
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
-        }
-        .gauge-value { font-size: 2rem; font-weight: 800; color: #4ade80; }
-        .gauge-label { font-size: 0.8rem; color: #b9b9d0; text-transform: uppercase; letter-spacing: 0.05em; }
-
-        .stat-value { font-size: 2rem; font-weight: 800; }
-        .stat-label { font-size: 0.85rem; color: #a5a5c0; text-transform: uppercase; letter-spacing: 0.06em; }
-
-        .cm-table { width: 100%; border-collapse: collapse; text-align: center; }
-        .cm-table th, .cm-table td { padding: 0.6rem; border: 1px solid rgba(255,255,255,0.1); }
-        .cm-table th { color: #b9b9d0; font-weight: 700; text-transform: capitalize; }
-
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes shimmer { to { background-position: 200% center; } }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
+.cm-table { width: 100%; border-collapse: collapse; text-align: center; }
+.cm-table th, .cm-table td { padding: 0.6rem; border: 1px solid var(--card-border); }
+.cm-table th { color: var(--text-muted); font-weight: 700; text-transform: capitalize; }
+"""
 
 
 def badge_html(label: str) -> str:
@@ -205,18 +147,6 @@ def render_capture_tab(classifier: GestureClassifier) -> None:
         st.rerun()
 
 
-def render_header() -> None:
-    st.markdown(
-        """
-        <div class="hero">
-            <h1>Batch Gesture Classification</h1>
-            <p>Upload multiple hand gesture images and review AI predictions.</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
 def render_progress() -> None:
     items = st.session_state.batch_items
     total = len(items)
@@ -240,7 +170,7 @@ def render_card(item: ReviewItem) -> None:
         st.image(item.image_bytes, use_container_width=True)
         st.markdown(
             f"{badge_html(item.predicted_label)} &nbsp; "
-            f"<span style='color:#b9b9d0; font-size:0.85rem;'>{round(item.confidence * 100, 1)}% confidence</span>",
+            f"<span style='color:var(--text-muted); font-size:0.85rem;'>{round(item.confidence * 100, 1)}% confidence</span>",
             unsafe_allow_html=True,
         )
         if item.is_mock:
@@ -409,10 +339,10 @@ def render_accuracy_section() -> None:
 
 def main() -> None:
     init_state()
-    inject_css()
+    inject_theme(PAGE_CSS)
     classifier = get_classifier()
 
-    render_header()
+    render_hero("Batch Gesture Classification", "Upload multiple hand gesture images and review AI predictions.")
 
     upload_tab, camera_tab = st.tabs(["Upload Files", "Take Photo"])
     with upload_tab:

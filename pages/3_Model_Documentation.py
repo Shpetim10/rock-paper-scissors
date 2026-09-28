@@ -16,13 +16,12 @@ from game.classifier import CLASS_NAMES, GestureClassifier, IMAGE_SIZE, MODEL_PA
 
 README_PATH = Path("README.md")
 DATASET_ROOT = Path("datasets")
+AUGMENTED_ROOT = Path("augmented_dataset")
+TEST_ROOT = Path("test_dataset")
 CLASS_COLORS = {"rock": "#7aa2ff", "paper": "#facc15", "scissors": "#ff6ec4"}
 
-st.set_page_config(
-    page_title="Model Documentation",
-    page_icon="\U0001F4DA",
-    layout="wide",
-)
+# Page config (title/icon/layout) is set once by the app.py entrypoint via
+# st.navigation; this page only needs to inject its own CSS and content.
 
 NAV_SECTIONS = [
     ("overview", "Overview"),
@@ -47,19 +46,22 @@ def load_readme(_path: str) -> str:
 
 
 @st.cache_data(show_spinner=False)
-def dataset_counts(_root: str) -> dict[str, int]:
+def dataset_counts(root: str) -> dict[str, int]:
+    # `root` must stay a normally-hashed (non-underscore) param: Streamlit
+    # excludes leading-underscore params from the cache key, which previously
+    # made every root share one cached result.
     counts = {}
     for label in CLASS_NAMES:
-        class_dir = Path(_root) / label
+        class_dir = Path(root) / label
         counts[label] = len(list(class_dir.glob("*"))) if class_dir.is_dir() else 0
     return counts
 
 
 @st.cache_data(show_spinner=False)
-def sample_images(_root: str, per_class: int = 1) -> list[tuple[str, Path]]:
+def sample_images(root: str, per_class: int = 1) -> list[tuple[str, Path]]:
     samples = []
     for label in CLASS_NAMES:
-        class_dir = Path(_root) / label
+        class_dir = Path(root) / label
         if not class_dir.is_dir():
             continue
         files = sorted(p for p in class_dir.iterdir() if p.is_file())
@@ -87,6 +89,34 @@ def mock_training_history(seed: int = 42, epochs: int = 30) -> pd.DataFrame:
                 "Validation Loss": round(val_loss, 4),
             }
         )
+    return pd.DataFrame(rows)
+
+
+# Real evaluation artifacts committed alongside the retrained model (see
+# README.md "5. Training Results"). When present, the docs page renders these
+# instead of the illustrative mock charts below.
+REAL_RESULT_IMAGES = {
+    "accuracy_per_class": "2026-09-28_13-26-25.png",
+    "confusion_matrix": "2026-09-28_13-27-06.png",
+    "accuracy_per_epoch": "2026-09-28_13-27-31.png",
+    "loss_per_epoch": "2026-09-28_13-27-56.png",
+}
+
+
+def real_results_available() -> bool:
+    return all(Path(name).exists() for name in REAL_RESULT_IMAGES.values())
+
+
+@st.cache_data(show_spinner=False)
+def parse_markdown_table(readme_text: str, heading: str) -> pd.DataFrame | None:
+    """Extract the first markdown table that follows a given heading line."""
+    pattern = rf"{re.escape(heading)}\s*\n\n(\|.+\|\n\|[-\s|:]+\|\n(?:\|.+\|\n?)+)"
+    match = re.search(pattern, readme_text)
+    if not match:
+        return None
+    lines = [line.strip() for line in match.group(1).strip().splitlines()]
+    header = [c.strip(" *") for c in lines[0].strip("|").split("|")]
+    rows = [dict(zip(header, (c.strip(" *") for c in line.strip("|").split("|")))) for line in lines[2:]]
     return pd.DataFrame(rows)
 
 
@@ -347,27 +377,41 @@ def render_overview(readme_text: str, query: str) -> None:
 def render_dataset_section(readme_text: str, query: str) -> None:
     section_anchor("dataset")
     st.markdown("## Dataset")
-    counts = dataset_counts(str(DATASET_ROOT))
-    total = sum(counts.values())
 
-    cols = st.columns(len(CLASS_NAMES) + 1)
-    for col, label in zip(cols[:-1], CLASS_NAMES):
+    original_counts = dataset_counts(str(DATASET_ROOT))
+    augmented_counts = dataset_counts(str(AUGMENTED_ROOT))
+    test_counts = dataset_counts(str(TEST_ROOT))
+    total_train = sum(original_counts.values())
+    total_test = sum(test_counts.values())
+
+    cols = st.columns(len(CLASS_NAMES) + 2)
+    for col, label in zip(cols[:-2], CLASS_NAMES):
         with col:
             st.markdown(
                 f"""
                 <div class="metric-tile">
-                    <div class="value" style="color:{CLASS_COLORS[label]}">{counts.get(label, 0)}</div>
+                    <div class="value" style="color:{CLASS_COLORS[label]}">{original_counts.get(label, 0)}</div>
                     <div class="label">{label}</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
+    with cols[-2]:
+        st.markdown(
+            f"""
+            <div class="metric-tile">
+                <div class="value">{total_train}</div>
+                <div class="label">Training Images</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
     with cols[-1]:
         st.markdown(
             f"""
             <div class="metric-tile">
-                <div class="value">{total}</div>
-                <div class="label">Total Images</div>
+                <div class="value" style="color:#38bdf8">{total_test}</div>
+                <div class="label">Held-out Test</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -375,14 +419,39 @@ def render_dataset_section(readme_text: str, query: str) -> None:
 
     st.write("")
     df = pd.DataFrame(
-        [{"Class": label.capitalize(), "Images": count} for label, count in counts.items()]
-        + [{"Class": "Total", "Images": total}]
+        [
+            {
+                "Class": label.capitalize(),
+                "Original": original_counts.get(label, 0),
+                "Augmented": augmented_counts.get(label, 0),
+                "Test": test_counts.get(label, 0),
+            }
+            for label in CLASS_NAMES
+        ]
+        + [
+            {
+                "Class": "Total",
+                "Original": total_train,
+                "Augmented": sum(augmented_counts.values()),
+                "Test": total_test,
+            }
+        ]
     )
-    st.caption("Click a column header to sort.")
+    st.caption("Original + Augmented images are used for training; Test images are a held-out split never seen during training. Click a column header to sort.")
     st.dataframe(df, use_container_width=True, hide_index=True)
+    callout(
+        "tip",
+        "\U0001F5BC️",
+        "Browse every image, filtered by class and source (Original / Augmented / Test), on the "
+        "**Dataset Gallery** page.",
+    )
 
     with st.expander("\U0001F3A8 Dataset diversity & augmentation", expanded=False):
-        section = re.search(r"## Dataset Diversity(.*?)## Data Augmentation(.*?)(?=\n## |\Z)", readme_text, re.DOTALL)
+        section = re.search(
+            r"##\s*(?:\d+\.\s*)?Dataset Diversity(.*?)##\s*(?:\d+\.\s*)?Data Augmentation(.*?)(?=\n##\s|\Z)",
+            readme_text,
+            re.DOTALL,
+        )
         if section and matches_query(section.group(0), query):
             st.markdown("### Diversity")
             st.markdown(section.group(1).strip())
@@ -458,9 +527,11 @@ class GestureClassifier:
 def render_training_section(is_mock: bool) -> None:
     section_anchor("training")
     st.markdown("## Training Process")
+    original_total = sum(dataset_counts(str(DATASET_ROOT)).values())
+    augmented_total = sum(dataset_counts(str(AUGMENTED_ROOT)).values())
     st.markdown(
-        "Images are loaded from `datasets/` (247 originals) and `augmented_dataset/` "
-        "(494 images including augmentations), resized to 224×224, and normalized to `[-1, 1]` "
+        f"Images are loaded from `datasets/` ({original_total} originals) and `augmented_dataset/` "
+        f"({augmented_total} images including augmentations), resized to 224×224, and normalized to `[-1, 1]` "
         "before being split into training and validation sets. The model was trained with "
         "[Google Teachable Machine](https://teachablemachine.withgoogle.com/), which fine-tunes "
         "a MobileNetV2 classification head on the uploaded dataset and exports a Keras `.h5` "
@@ -477,25 +548,108 @@ def render_training_section(is_mock: bool) -> None:
             language="python",
         )
     st.markdown("### Training Curves")
-    if is_mock:
-        callout("warning", "\U0001F9EA", "No trained model was found. The curves below are **simulated** to illustrate the documentation layout.")
+    if real_results_available():
+        st.markdown(
+            "Training accuracy converges quickly to ~1.00, while test accuracy stabilizes around "
+            "0.94 after roughly 15 epochs. Training loss decreases steadily toward 0, while test "
+            "loss stabilizes around 0.33 after an initial period of fluctuation."
+        )
+        col_a, col_b = st.columns(2)
+        with col_a:
+            st.markdown("**Accuracy per Epoch**")
+            st.image(REAL_RESULT_IMAGES["accuracy_per_epoch"], use_container_width=True)
+        with col_b:
+            st.markdown("**Loss per Epoch**")
+            st.image(REAL_RESULT_IMAGES["loss_per_epoch"], use_container_width=True)
+        callout("success", "✅", "These curves come from the actual training run recorded in `README.md`.")
     else:
-        callout("info", "\U00002139\U0000FE0F", "Teachable Machine does not export per-epoch training history, so the curves below are **simulated** to illustrate the documentation layout.")
-    history = mock_training_history()
-    acc_df = history.set_index("Epoch")[["Training Accuracy", "Validation Accuracy"]]
-    loss_df = history.set_index("Epoch")[["Training Loss", "Validation Loss"]]
-    col_a, col_b = st.columns(2)
-    with col_a:
-        st.markdown("**Accuracy**")
-        st.line_chart(acc_df)
-    with col_b:
-        st.markdown("**Loss**")
-        st.line_chart(loss_df)
+        if is_mock:
+            callout("warning", "\U0001F9EA", "No trained model was found. The curves below are **simulated** to illustrate the documentation layout.")
+        else:
+            callout("info", "\U00002139\U0000FE0F", "Teachable Machine does not export per-epoch training history, so the curves below are **simulated** to illustrate the documentation layout.")
+        history = mock_training_history()
+        acc_df = history.set_index("Epoch")[["Training Accuracy", "Validation Accuracy"]]
+        loss_df = history.set_index("Epoch")[["Training Loss", "Validation Loss"]]
+        col_a, col_b = st.columns(2)
+        with col_a:
+            st.markdown("**Accuracy**")
+            st.line_chart(acc_df)
+        with col_b:
+            st.markdown("**Loss**")
+            st.line_chart(loss_df)
 
 
-def render_evaluation_section(query: str, is_mock: bool) -> None:
+def render_evaluation_section(readme_text: str, query: str, is_mock: bool) -> None:
     section_anchor("evaluation")
     st.markdown("## Evaluation Results")
+
+    if real_results_available():
+        accuracy_df = parse_markdown_table(readme_text, "### 5.1 Accuracy per Class")
+        if accuracy_df is not None:
+            accuracy_df["Accuracy"] = accuracy_df["Accuracy"].astype(float)
+            overall_accuracy = (
+                (accuracy_df["Accuracy"] * accuracy_df["# Samples"].astype(int)).sum()
+                / accuracy_df["# Samples"].astype(int).sum()
+            )
+        else:
+            overall_accuracy = 0.94
+        # Reported held-out set size for the recorded evaluation run (from the
+        # README's own accuracy table) — this can differ from what's on disk
+        # in `test_dataset/` today if that folder has changed since the run.
+        test_total = (
+            int(accuracy_df["# Samples"].astype(int).sum())
+            if accuracy_df is not None
+            else sum(dataset_counts(str(TEST_ROOT)).values())
+        )
+
+        tiles = [
+            ("Framework", "TensorFlow / Keras"),
+            ("Classes", str(len(CLASS_NAMES))),
+            ("Test Set Size", str(test_total)),
+            ("Accuracy", f"{overall_accuracy * 100:.1f}%"),
+        ]
+        cols = st.columns(len(tiles))
+        for col, (label, value) in zip(cols, tiles):
+            with col:
+                st.markdown(
+                    f"""
+                    <div class="metric-tile">
+                        <div class="value">{value}</div>
+                        <div class="label">{label}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+        st.write("")
+        st.markdown("### Accuracy per Class")
+        if accuracy_df is not None:
+            st.dataframe(accuracy_df, use_container_width=True, hide_index=True)
+        st.image(REAL_RESULT_IMAGES["accuracy_per_class"], use_container_width=True)
+
+        st.markdown("### Confusion Matrix")
+        st.markdown(
+            "Scissors were classified perfectly, while a small number of Rock and Paper images "
+            "were confused with each other."
+        )
+        st.image(REAL_RESULT_IMAGES["confusion_matrix"], use_container_width=True)
+
+        callout(
+            "success",
+            "✅",
+            "Metrics above come from the model's real evaluation run on the held-out test set "
+            "recorded in `README.md` — no simulated data.",
+        )
+
+        readme_bytes = load_readme(str(README_PATH))
+        st.download_button(
+            "\U0001F4E5 Download Model Report (README.md)",
+            data=readme_bytes,
+            file_name="model_report.md",
+            mime="text/markdown",
+        )
+        return
+
     cm = mock_confusion_matrix()
     metrics_df = mock_precision_recall_f1(cm)
     overall_accuracy = (cm[cm.Actual == cm.Predicted]["Count"].sum()) / cm["Count"].sum()
@@ -659,7 +813,7 @@ def main() -> None:
     st.divider()
     render_training_section(classifier.is_mock)
     st.divider()
-    render_evaluation_section(query, classifier.is_mock)
+    render_evaluation_section(readme_text, query, classifier.is_mock)
     st.divider()
     render_usage_section()
     st.divider()

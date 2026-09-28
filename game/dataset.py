@@ -8,11 +8,19 @@ Kept in a regular importable module (rather than the page script) so that
 from __future__ import annotations
 
 import os
-import re
 from dataclasses import dataclass
 from pathlib import Path
 
 from PIL import Image
+
+# Source directories, each labeled explicitly rather than guessed from
+# filenames (the old heuristic misclassified plenty of originals whose
+# filenames happened to look like `label_123.png`).
+DATASET_SOURCES = {
+    "Original": "datasets",
+    "Augmented": "augmented_dataset",
+    "Test": "test_dataset",
+}
 
 
 @dataclass
@@ -25,13 +33,7 @@ class DatasetImage:
     height: int
 
 
-def classify_source(label: str, filename: str) -> str:
-    """Augmented images are generated as `{label}_{n}.png`; anything else is original."""
-    pattern = re.compile(rf"^{re.escape(label)}_\d+\.png$", re.IGNORECASE)
-    return "Augmented" if pattern.match(filename) else "Original"
-
-
-def load_dataset(root: str, class_names: list[str]) -> list[DatasetImage]:
+def load_dataset(root: str, class_names: list[str], source: str = "Original") -> list[DatasetImage]:
     images: list[DatasetImage] = []
     for label in class_names:
         class_dir = Path(root) / label
@@ -51,9 +53,17 @@ def load_dataset(root: str, class_names: list[str]) -> list[DatasetImage]:
                     path=path,
                     label=label,
                     filename=entry,
-                    source=classify_source(label, entry),
+                    source=source,
                     width=width,
                     height=height,
                 )
             )
     return images
+
+
+def load_all_sources(class_names: list[str]) -> dict[str, list[DatasetImage]]:
+    """Load every known dataset split, keyed by its source label."""
+    return {
+        source: load_dataset(root, class_names, source=source)
+        for source, root in DATASET_SOURCES.items()
+    }

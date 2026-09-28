@@ -1,4 +1,10 @@
-"""Rock Paper Scissors AI Challenge - Streamlit game screen."""
+"""Rock Paper Scissors AI Challenge - Streamlit entrypoint & game screen.
+
+This file is both the app's launch script (`streamlit run app.py`) and the
+"Play Game" page. It sets the page config once and uses `st.navigation` to
+define clean, custom-labeled sidebar entries for every screen, instead of
+relying on Streamlit's filename-derived page names.
+"""
 
 import time
 
@@ -6,6 +12,7 @@ import streamlit as st
 from PIL import Image
 
 from game.classifier import GESTURE_EMOJI, GestureClassifier, computer_move, judge
+from game.theme import inject_theme, render_hero
 
 WINS_NEEDED = 3
 
@@ -54,146 +61,76 @@ def reset_game() -> None:
     st.session_state.camera_key += 1
 
 
-def inject_css() -> None:
-    st.markdown(
-        """
-        <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
+PAGE_CSS = """
+.scoreboard { display: flex; gap: 1rem; justify-content: center; margin-bottom: 1.5rem; }
+.score-item { text-align: center; flex: 1; }
+.score-label { font-size: 0.85rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
+.score-value { font-size: 2.4rem; font-weight: 800; margin-top: 0.2rem; }
+.score-human { color: var(--accent-3); }
+.score-computer { color: var(--accent-1); }
+.score-round { color: var(--accent-2); }
+.score-remaining { color: #facc15; }
 
-        html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+.move-card {
+    text-align: center;
+    padding: 1.6rem 1rem;
+    border-radius: 20px;
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    animation: rps-pop-in 0.4s ease;
+}
+.move-emoji { font-size: 4.5rem; line-height: 1; }
+.move-label { margin-top: 0.6rem; font-size: 1.1rem; font-weight: 700; text-transform: capitalize; }
 
-        .stApp {
-            background: radial-gradient(circle at 20% -10%, #2b1055 0%, #0f0c29 45%, #0a0a16 100%);
-            color: #f1f1f6;
-        }
+.result-banner {
+    text-align: center;
+    padding: 1rem;
+    border-radius: 16px;
+    font-size: 1.6rem;
+    font-weight: 800;
+    margin: 1rem 0;
+    animation: rps-pop-in 0.5s ease;
+}
+.result-win { background: rgba(74, 222, 128, 0.15); color: #22a35a; border: 1px solid #4ade80; }
+.result-lose { background: rgba(255, 110, 196, 0.15); color: #d63384; border: 1px solid #ff6ec4; }
+.result-draw { background: rgba(250, 204, 21, 0.15); color: #b8860b; border: 1px solid #facc15; }
 
-        .hero {
-            text-align: center;
-            padding: 2.5rem 1rem 1.5rem 1rem;
-            animation: fadeIn 0.8s ease;
-        }
-        .hero h1 {
-            font-size: 2.8rem;
-            font-weight: 800;
-            margin: 0;
-            background: linear-gradient(90deg, #ff6ec4, #7873f5, #4ade80);
-            background-size: 200% auto;
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            animation: shimmer 6s linear infinite;
-        }
-        .hero p {
-            font-size: 1.1rem;
-            color: #b9b9d0;
-            margin-top: 0.5rem;
-        }
+.confidence-track {
+    width: 100%;
+    height: 10px;
+    border-radius: 6px;
+    background: var(--card-bg-strong);
+    overflow: hidden;
+    margin-top: 0.4rem;
+}
+.confidence-fill {
+    height: 100%;
+    border-radius: 6px;
+    background: linear-gradient(90deg, var(--accent-3), var(--accent-2));
+    transition: width 0.6s ease;
+}
 
-        .glass-card {
-            background: rgba(255, 255, 255, 0.06);
-            border: 1px solid rgba(255, 255, 255, 0.12);
-            border-radius: 20px;
-            padding: 1.4rem;
-            backdrop-filter: blur(14px);
-            -webkit-backdrop-filter: blur(14px);
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
-            transition: transform 0.25s ease, box-shadow 0.25s ease;
-        }
-        .glass-card:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
-        }
+.mock-banner {
+    text-align: center;
+    padding: 0.5rem 1rem;
+    border-radius: 10px;
+    background: rgba(250, 204, 21, 0.12);
+    border: 1px solid rgba(250, 204, 21, 0.4);
+    color: #b8860b;
+    font-size: 0.85rem;
+    margin-bottom: 1rem;
+}
 
-        .scoreboard { display: flex; gap: 1rem; justify-content: center; margin-bottom: 1.5rem; }
-        .score-item { text-align: center; flex: 1; }
-        .score-label { font-size: 0.85rem; letter-spacing: 0.08em; text-transform: uppercase; color: #a5a5c0; }
-        .score-value { font-size: 2.4rem; font-weight: 800; margin-top: 0.2rem; }
-        .score-human { color: #4ade80; }
-        .score-computer { color: #ff6ec4; }
-        .score-round { color: #7873f5; }
-        .score-remaining { color: #facc15; }
-
-        .move-card {
-            text-align: center;
-            padding: 1.6rem 1rem;
-            border-radius: 20px;
-            background: rgba(255, 255, 255, 0.06);
-            border: 1px solid rgba(255, 255, 255, 0.12);
-            animation: popIn 0.4s ease;
-        }
-        .move-emoji { font-size: 4.5rem; line-height: 1; }
-        .move-label { margin-top: 0.6rem; font-size: 1.1rem; font-weight: 700; text-transform: capitalize; }
-
-        .result-banner {
-            text-align: center;
-            padding: 1rem;
-            border-radius: 16px;
-            font-size: 1.6rem;
-            font-weight: 800;
-            margin: 1rem 0;
-            animation: popIn 0.5s ease;
-        }
-        .result-win { background: rgba(74, 222, 128, 0.15); color: #4ade80; border: 1px solid #4ade80; }
-        .result-lose { background: rgba(255, 110, 196, 0.15); color: #ff6ec4; border: 1px solid #ff6ec4; }
-        .result-draw { background: rgba(250, 204, 21, 0.15); color: #facc15; border: 1px solid #facc15; }
-
-        .confidence-track {
-            width: 100%;
-            height: 10px;
-            border-radius: 6px;
-            background: rgba(255, 255, 255, 0.1);
-            overflow: hidden;
-            margin-top: 0.4rem;
-        }
-        .confidence-fill {
-            height: 100%;
-            border-radius: 6px;
-            background: linear-gradient(90deg, #4ade80, #7873f5);
-            transition: width 0.6s ease;
-        }
-
-        .mock-banner {
-            text-align: center;
-            padding: 0.5rem 1rem;
-            border-radius: 10px;
-            background: rgba(250, 204, 21, 0.12);
-            border: 1px solid rgba(250, 204, 21, 0.4);
-            color: #facc15;
-            font-size: 0.85rem;
-            margin-bottom: 1rem;
-        }
-
-        .victory-card {
-            text-align: center;
-            padding: 3rem 1.5rem;
-            border-radius: 24px;
-            background: linear-gradient(160deg, rgba(255, 215, 0, 0.12), rgba(120, 115, 245, 0.12));
-            border: 1px solid rgba(255, 215, 0, 0.4);
-            animation: popIn 0.6s ease;
-        }
-        .trophy { font-size: 6rem; animation: bounce 1.4s ease infinite; }
-
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes popIn { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
-        @keyframes shimmer { to { background-position: 200% center; } }
-        @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-14px); } }
-
-        div[data-testid="stDataFrame"] { border-radius: 14px; overflow: hidden; }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def render_hero() -> None:
-    st.markdown(
-        """
-        <div class="hero">
-            <h1>Rock Paper Scissors AI Challenge</h1>
-            <p>First player to reach 3 wins becomes the champion.</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+.victory-card {
+    text-align: center;
+    padding: 3rem 1.5rem;
+    border-radius: 24px;
+    background: linear-gradient(160deg, rgba(255, 215, 0, 0.14), rgba(120, 115, 245, 0.14));
+    border: 1px solid rgba(255, 215, 0, 0.4);
+    animation: rps-pop-in 0.6s ease;
+}
+.trophy { font-size: 6rem; animation: rps-bounce 1.4s ease infinite; }
+"""
 
 
 def render_scoreboard() -> None:
@@ -397,12 +334,12 @@ def render_history() -> None:
     st.dataframe(st.session_state.history, use_container_width=True, hide_index=True)
 
 
-def main() -> None:
+def render_game() -> None:
     init_state()
-    inject_css()
+    inject_theme(PAGE_CSS)
     classifier = get_classifier()
 
-    render_hero()
+    render_hero("Rock Paper Scissors AI Challenge", "First player to reach 3 wins becomes the champion.")
     render_scoreboard()
     st.write("")
 
@@ -414,5 +351,19 @@ def main() -> None:
         render_history()
 
 
+# ---------------------------------------------------------------------------
+# Navigation — custom sidebar labels/icons instead of Streamlit's
+# filename-derived page names.
+# ---------------------------------------------------------------------------
+
+pages = st.navigation(
+    [
+        st.Page(render_game, title="Play Game", icon="\U0001F3AE", default=True, url_path="play"),
+        st.Page("pages/1_Batch_Prediction_Review.py", title="Batch Review", icon="\U0001F4F8", url_path="batch-review"),
+        st.Page("pages/2_Dataset_Gallery.py", title="Dataset Gallery", icon="\U0001F5BC", url_path="dataset-gallery"),
+        st.Page("pages/3_Model_Documentation.py", title="Model Docs", icon="\U0001F4DA", url_path="model-docs"),
+    ]
+)
+
 if __name__ == "__main__":
-    main()
+    pages.run()
