@@ -1,8 +1,16 @@
 # Rock-Paper-Scissors Dataset
 
-## Dataset
+This repository contains an image dataset and a trained model for **Rock-Paper-Scissors hand gesture classification**.
 
-This repository contains an image dataset for **Rock-Paper-Scissors hand gesture classification**.
+## Table of Contents
+
+1. [Dataset](#1-dataset)
+2. [Dataset Diversity](#2-dataset-diversity)
+3. [Data Augmentation](#3-data-augmentation)
+4. [Augmented Dataset](#4-augmented-dataset)
+5. [Training Results](#5-training-results)
+
+## 1. Dataset
 
 The dataset contains three classes:
 
@@ -12,18 +20,18 @@ The dataset contains three classes:
 
 The original images are stored in the `datasets/` directory.
 
-### Original Dataset
+### 1.1 Original Dataset
 
-The original dataset contains **247 images**:
+The original dataset contains **210 images**:
 
 | Class     | Number of Images |
-| --------- | ---------------: |
-| Rock      |               80 |
-| Paper     |               80 |
-| Scissors  |               87 |
-| **Total** |          **247** |
+| --------- | ----------------: |
+| Rock      |                70 |
+| Paper     |                70 |
+| Scissors  |                70 |
+| **Total** |           **210** |
 
-## Dataset Diversity
+## 2. Dataset Diversity
 
 When preparing the dataset, we considered variation in the visual appearance and recording conditions of the images. The dataset includes differences such as:
 
@@ -35,39 +43,40 @@ When preparing the dataset, we considered variation in the visual appearance and
 
 These variations are important because, in real-world use, the same Rock, Paper, or Scissors gesture may be presented by different people and under different environmental conditions.
 
-## Data Augmentation
+## 3. Data Augmentation
 
 Data augmentation was applied to increase the variability of the dataset while keeping the original images unchanged.
 
-The augmentation was implemented using **Python and the Pillow (PIL) library**. For each original image, one augmented version was generated.
+The augmentation was implemented using **Python and the Pillow (PIL) library**. For each original image, one augmented version was generated using the following, randomly applied transformations:
 
-The following transformations were randomly applied:
-
-* **Horizontal flipping:** 50% probability of mirroring the image horizontally.
-* **Rotation:** a random rotation between **-15° and +15°**.
-* **Brightness adjustment:** brightness randomly varied between **85% and 115%** of the original.
-* **Contrast adjustment:** contrast randomly varied between **85% and 115%** of the original.
-* **Random cropping/zooming:** a random crop between **90% and 100%** of the original image area.
-* **Resizing:** after cropping, the image was resized back to its original dimensions.
+| Transformation           | Range                                            |
+| ------------------------- | ------------------------------------------------- |
+| Horizontal flipping       | 50% probability                                    |
+| Rotation                  | -15° to +15°                                      |
+| Brightness adjustment     | 85% to 115% of the original                        |
+| Contrast adjustment       | 85% to 115% of the original                        |
+| Random cropping/zooming   | 90% to 100% of the original image area, then resized back to its original dimensions |
 
 These transformations introduce additional variation in orientation, lighting, contrast, and image framing while keeping the Rock, Paper, and Scissors gestures recognizable.
 
-## Augmented Dataset
+## 4. Augmented Dataset
 
 The augmented dataset is stored in the `augmented_dataset/` directory.
 
-Each original image was preserved, and one augmented version was created for each original image.
+Each original image was preserved alongside its augmented version.
 
 | Class     | Original Images | Augmented Images |   Total |
-| --------- | --------------: | ---------------: | ------: |
-| Rock      |              80 |               80 |     160 |
-| Paper     |              80 |               80 |     160 |
-| Scissors  |              87 |               87 |     174 |
-| **Total** |         **247** |          **247** | **494** |
+| --------- | ---------------: | ------------------: | -------: |
+| Rock      |                60 |                   60 |      120 |
+| Paper     |                59 |                   61 |      120 |
+| Scissors  |                61 |                   59 |      120 |
+| **Total** |           **180** |              **180** |  **360** |
 
-The augmented dataset therefore contains **494 images in total**.
+The augmented dataset therefore contains **360 images in total**.
 
-### File Naming
+> **Note:** After `augment.py` was run, manual changes were made to the images (additions/removals), which is why the original and augmented counts above are not perfectly even and no longer match `datasets/` exactly. The counts above reflect what is currently on disk.
+
+### 4.1 File Naming
 
 The augmented dataset contains two versions of each image:
 
@@ -76,4 +85,34 @@ The augmented dataset contains two versions of each image:
 
 The original dataset was not modified during augmentation.
 
+## 5. Training Results
 
+The model was trained for 50 epochs and evaluated on a held-out test set of 54 images (18 per class).
+
+### 5.1 Accuracy per Class
+
+| Class    | Accuracy | # Samples |
+| -------- | -------: | --------: |
+| Rock     |     0.94 |        18 |
+| Paper    |     0.89 |        18 |
+| Scissors |     1.00 |        18 |
+
+![Accuracy per class](2026-09-28_13-26-25.png)
+
+### 5.2 Confusion Matrix
+
+Scissors were classified perfectly, while a small number of Rock and Paper images were confused with each other.
+
+![Confusion matrix](2026-09-28_13-27-06.png)
+
+### 5.3 Accuracy per Epoch
+
+Training accuracy converges quickly to ~1.00, while test accuracy stabilizes around 0.94 after roughly 15 epochs.
+
+![Accuracy per epoch](2026-09-28_13-27-31.png)
+
+### 5.4 Loss per Epoch
+
+Training loss decreases steadily toward 0, while test loss stabilizes around 0.33 after an initial period of fluctuation.
+
+![Loss per epoch](2026-09-28_13-27-56.png)
