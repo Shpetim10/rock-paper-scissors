@@ -5,7 +5,11 @@ from __future__ import annotations
 import hashlib
 import random
 import re
+import sys
 from pathlib import Path
+
+if (_root := str(Path(__file__).resolve().parent.parent)) not in sys.path:
+    sys.path.insert(0, _root)
 
 import altair as alt
 import pandas as pd

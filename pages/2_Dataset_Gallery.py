@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import base64
 import io
+import sys
 from pathlib import Path
+
+if (_root := str(Path(__file__).resolve().parent.parent)) not in sys.path:
+    sys.path.insert(0, _root)
 
 import streamlit as st
 from PIL import Image
