@@ -116,3 +116,11 @@ Training accuracy converges quickly to ~1.00, while test accuracy stabilizes aro
 Training loss decreases steadily toward 0, while test loss stabilizes around 0.33 after an initial period of fluctuation.
 
 ![Loss per epoch](2026-09-28_13-27-56.png)
+
+## 6. Source
+
+The original Rock-Paper-Scissors images used as the basis for this project were sourced from the following Kaggle dataset:
+
+- [Rock Paper Scissors Dataset – Kaggle](https://www.kaggle.com/datasets/alexandredj/rock-paper-scissors-dataset)
+
+The dataset was subsequently processed, organized, augmented, and modified for this project. The training results presented in this repository are based on the dataset version and preprocessing pipeline described above.
